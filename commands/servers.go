@@ -19,17 +19,28 @@ var serversGetCmd = &cobra.Command{
 }
 
 var serversDescribeCmd = &cobra.Command{
-	Use:   "servers",
+	Use:   "server",
 	Short: "describe a server from Consul Catalog",
 	Long:  `describe a specific Server registered in the Consul Catalog.`,
 	Run:   describeServer,
 }
 
 var serversMonitorCmd = &cobra.Command{
-	Use:   "servers",
+	Use:   "server",
 	Short: "monitor a given server",
 	Long:  `monitor a given server from a predefined exporter in the Consul Catalog.`,
-	Run:   monitorServer,
+	Example: `
+	$ promstackctl monitor server --exporter.name node-exporter --node.name example.com --node.address 1.1.1.1`,
+	Run: monitorServer,
+}
+
+var serversUnmonitorCmd = &cobra.Command{
+	Use:   "server",
+	Short: "unmonitor a given server",
+	Long:  `unmonitor a previously registered server in the Consul Catalog.`,
+	Example: `
+	$ promstackctl remove server --node.name`,
+	Run: unmonitorServer,
 }
 
 var (
@@ -42,6 +53,8 @@ func init() {
 	serversMonitorCmd.PersistentFlags().StringVar(&nodeAddressFlag, "node.address", "", "IPv4 Address (or DNS if website) of node to monitor")
 	serversMonitorCmd.PersistentFlags().StringVar(&nodeNameFlag, "node.name", "", "name of node to monitor")
 	serversMonitorCmd.PersistentFlags().StringVar(&exporterNameFlag, "exporter.name", "", "name of exporter to monitor on node")
+
+	serversUnmonitorCmd.PersistentFlags().StringVar(&nodeNameFlag, "node.name", "", "name of node to remove from PromStack monitoring.")
 }
 
 func getServers(cmd *cobra.Command, args []string) {
@@ -59,10 +72,8 @@ func getServers(cmd *cobra.Command, args []string) {
 	nodes := <-consulChan
 
 	table := uitable.New()
-	table.Separator = "\t|\t"
 	table.Wrap = true
 	table.AddRow("SERVER", "ADDRESS")
-	table.AddRow("")
 	for _, n := range nodes {
 		table.AddRow(n.Node, n.Address)
 	}
@@ -77,28 +88,35 @@ func describeServer(cmd *cobra.Command, args []string) {
 
 		table := uitable.New()
 		table.Wrap = true
-		table.AddRow("SERVER", node.Node.Node)
-		table.AddRow("ADDRESS", node.Node.Address)
-		table.AddRow("Services")
+		table.AddRow("Name:", node.Node.Node)
+		table.AddRow("Address:", node.Node.Address)
+		table.AddRow("Services:")
+		table.AddRow("  ExporterName", "Endpoint")
+		table.AddRow("  ============", "========")
 		for _, s := range node.Services {
-			table.AddRow("    " + s.Service + " [" + node.Node.Address + ":" + strconv.Itoa(s.Port) + "]")
+			table.AddRow("  "+s.Service, node.Node.Address+":"+strconv.Itoa(s.Port))
 		}
 		fmt.Println(table)
 	}
 }
 
 func monitorServer(cmd *cobra.Command, args []string) {
+	cont := true
 	if nodeAddressFlag == "" {
-		log.Fatalf("[ERROR] Please use the --node.address argument to provide a node address to monitor.")
-		return
+		log.Fatalf("MISSING REQUIRED --node.address argument to provide a node address to monitor.")
+		cont = false
 	}
 	if nodeNameFlag == "" {
-		log.Fatalf("[ERROR] Please use the --node.name argument to provide a node name to monitor.")
-		return
+		log.Fatalf("MISSING REQUIRED --node.name argument to provide a node name to monitor.")
+		cont = false
 	}
 	if exporterNameFlag == "" {
-		log.Fatalf("[ERROR] Please use the --exporter.name argument to provide an exporter to monitor.")
-		return
+		log.Fatalf("MISSING REQUIRED --exporter.name argument to provide an exporter to monitor.")
+		cont = false
+	}
+
+	if cont != true {
+		log.Fatalf("[ERROR] One or more required arguments are missing.  Please refer to the log output.")
 	}
 
 	exporterDetails := getKV("promstack/exporters/" + exporterNameFlag)
@@ -128,9 +146,42 @@ func monitorServer(cmd *cobra.Command, args []string) {
 				log.Printf("[ERROR] Unable to Register %s to Catalog, message: %s", nodeNameFlag, err)
 			}
 
-			log.Printf("[DEBUG] Catalog Meta: %v", meta)
+			log.Printf("Exporter %s added to Node %s (request time %v).", newNode.Node, newNode.Service.Service, meta.RequestTime)
+
+			node := getNode(newNode.Node)
+			table := uitable.New()
+			table.Wrap = true
+			table.AddRow("Name:", node.Node.Node)
+			table.AddRow("Address:", node.Node.Address)
+			table.AddRow("Services:")
+			table.AddRow("  ExporterName", "Endpoint")
+			table.AddRow("  ============", "========")
+			for _, s := range node.Services {
+				table.AddRow("  "+s.Service, node.Node.Address+":"+strconv.Itoa(s.Port))
+			}
+			table.AddRow("")
+			fmt.Println(table)
 
 		}
 	}
 
+}
+
+func unmonitorServer(cmd *cobra.Command, args []string) {
+	if nodeNameFlag == "" {
+		log.Fatalf("MISSING REQUIRED --node.name argument to provide a node name to monitor.")
+		return
+	}
+
+	dereg := &consul.CatalogDeregistration{
+		Node: nodeNameFlag,
+	}
+
+	catalog := commandCfg.Consul.client.Catalog()
+
+	if _, err := catalog.Deregister(dereg, nil); err != nil {
+		log.Fatalf("[ERROR] Unable to deregister %s, message: %s", nodeNameFlag, err)
+	} else {
+		fmt.Printf("remove %s from PromStack monitoring.\n", nodeNameFlag)
+	}
 }

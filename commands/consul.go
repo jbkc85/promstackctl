@@ -81,7 +81,9 @@ func (c *consulConfig) health() (string, error) {
 	_, _, err := catalog.Nodes(&consul.QueryOptions{})
 
 	if err != nil {
-		log.Printf("[ERROR] Consul Health Check Failed, message: %s", err)
+		if commandCfg.Verbose {
+			log.Printf("[ERROR] Consul Health Check Failed, message: %s", err)
+		}
 		health = "error"
 	}
 	return health, err

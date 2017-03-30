@@ -21,11 +21,12 @@ func healthCheck(cmd *cobra.Command, args []string) {
 	table := uitable.New()
 	table.Wrap = true
 
-	table.AddRow("ENDPOINT", "|", "STATUS", "|", "MESSAGE")
 	consulHealth, consulErr := commandCfg.Consul.health()
-	table.AddRow(commandCfg.Consul.connectionString(), "|", consulHealth, "|", consulErr)
 	prometheusHealth, prometheusErr := commandCfg.Prometheus.health()
-	table.AddRow(commandCfg.Prometheus.connectionString(), "|", prometheusHealth, "|", prometheusErr)
+
+	table.AddRow("COMPONENT", "URL", "STATUS", "MESSAGE")
+	table.AddRow("consul", commandCfg.Consul.connectionString(), consulHealth, consulErr)
+	table.AddRow("prometheus", commandCfg.Prometheus.connectionString(), prometheusHealth, prometheusErr)
 
 	fmt.Println(table)
 }

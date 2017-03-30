@@ -19,12 +19,20 @@ var monitorRootCmd = &cobra.Command{
 	Long:  `monitor`,
 }
 
+var removeRootCmd = &cobra.Command{
+	Use:   "remove",
+	Short: "remove",
+	Long:  `remove`,
+}
+
 func init() {
 	monitorRootCmd.AddCommand(serversMonitorCmd)
+	removeRootCmd.AddCommand(serversUnmonitorCmd)
 	PromStackCmd.AddCommand(healthRootCmd)
 	PromStackCmd.AddCommand(getRootCmd)
 	PromStackCmd.AddCommand(describeRootCmd)
 	PromStackCmd.AddCommand(monitorRootCmd)
+	PromStackCmd.AddCommand(removeRootCmd)
 
 	initConfig()
 

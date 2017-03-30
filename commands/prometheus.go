@@ -31,7 +31,9 @@ func (p *prometheusConfig) health() (string, error) {
 	_, err := queryAPI.Query(context.Background(), "up{job='prometheus'}", time.Now())
 
 	if err != nil {
-		log.Printf("[ERROR] Prometheus Health Check Failed, message: %s", err)
+		if commandCfg.Verbose {
+			log.Printf("[ERROR] Prometheus Health Check Failed, message: %s", err)
+		}
 		health = "error"
 	}
 	return health, err

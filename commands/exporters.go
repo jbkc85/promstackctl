@@ -27,11 +27,9 @@ func getExporters(cmd *cobra.Command, args []string) {
 	pairs := getKVPath("promstack/exporters")
 
 	table := uitable.New()
-	table.Separator = "\t|\t"
 	table.Wrap = true
 
 	table.AddRow("EXPORTER", "PORT", "TAGS")
-	table.AddRow("")
 
 	for _, pair := range pairs {
 		kvExporter := exporter{}
@@ -42,4 +40,8 @@ func getExporters(cmd *cobra.Command, args []string) {
 		}
 	}
 	fmt.Println(table)
+}
+
+func unmonitorExporter(cmd *cobra.Command, args []string) {
+
 }
