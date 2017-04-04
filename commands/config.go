@@ -1,14 +1,15 @@
 package commands
 
 import (
-	"os"
-	"strconv"
+	"log"
 
 	consul "github.com/hashicorp/consul/api"
 	"github.com/prometheus/client_golang/api/prometheus"
+	"github.com/spf13/viper"
 )
 
 type config struct {
+	Cluster    string
 	Consul     consulConfig     `json:"consul"`
 	Prometheus prometheusConfig `json:"prometheus"`
 	Verbose    bool             `json:"verbose"`
@@ -29,58 +30,132 @@ type prometheusConfig struct {
 	Port    string `json:"port"`
 }
 
-var commandCfg config
+var (
+	commandCfg = config{
+		Cluster: "local",
+		Consul: consulConfig{
+			Address:    defaultConsulAddress,
+			Datacenter: defaultConsulDatacenter,
+			Port:       "8500",
+		},
+		Prometheus: prometheusConfig{
+			Address: "localhost",
+			Port:    "9090",
+			Schema:  "http",
+		},
+		Verbose: false,
+	}
+	parsedCfg config
 
-//TODO:
-// look at Kelsey's confd config.go. Should be a way to use the following
-// scenario to line up appropriate configs:
-// ENV -> FILE (/etc/serv/config.json:$PWD/.serv.json) -> ARG
-// seems to be flag.Changed() can be used
+	clusterFlag string
+)
 
-func initConfig() {
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Consul.Address, "consul.address", "localhost", "Address to Consul API. [env:PROMSTACK_CONSUL_ADDRESS]")
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Consul.Datacenter, "consul.datacenter", "promstack", "Datacenter to reference in Consul API. [env:PROMSTACK_CONSUL_DATACENTER]")
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Consul.Port, "consul.port", "8500", "Port to Consul API. [env:PROMSTACK_CONSUL_PORT]")
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Consul.Schema, "consul.schema", "http", "Schema to access Consul API on. [env:PROMSTACK_CONSUL_SCHEMA]")
+const (
+	defaultCluster          = ""
+	defaultConsulAddress    = "localhost"
+	defaultConsulDatacenter = "promstack"
+	defaultVerbose          = false
+)
 
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Prometheus.Address, "prometheus.address", "localhost", "Address to Prometheus. [env:PROMSTACK_PROMETHEUS_ADDRESS]")
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Prometheus.Port, "prometheus.port", "9090", "Port to Prometheus API. [env:PROMSTACK_PROMETHEUS_PORT]")
-	PromStackCmd.PersistentFlags().StringVar(&commandCfg.Prometheus.Schema, "promtheus.schema", "http", "Schema to access Prometheus API on. [env:PROMSTACK_PROMETHEUS_SCHEMA]")
+func globalCmdFlags() {
+	PromStackCmd.PersistentFlags().StringVarP(&parsedCfg.Consul.Address, "consul.address", "", defaultConsulAddress, "Address to Consul API. [env:PROMSTACK_CONSUL_ADDRESS]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Consul.Datacenter, "consul.datacenter", defaultConsulDatacenter, "Datacenter to reference in Consul API. [env:PROMSTACK_CONSUL_DATACENTER]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Consul.Port, "consul.port", "8500", "Port to Consul API. [env:PROMSTACK_CONSUL_PORT]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Consul.Schema, "consul.schema", "http", "Schema to access Consul API on. [env:PROMSTACK_CONSUL_SCHEMA]")
 
-	PromStackCmd.PersistentFlags().BoolVar(&commandCfg.Verbose, "verbose", false, "Enable Verbose output of application. [env:PROMSTACK_VERBOSE]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Prometheus.Address, "prometheus.address", "localhost", "Address to Prometheus. [env:PROMSTACK_PROMETHEUS_ADDRESS]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Prometheus.Port, "prometheus.port", "9090", "Port to Prometheus API. [env:PROMSTACK_PROMETHEUS_PORT]")
+	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Prometheus.Schema, "promtheus.schema", "http", "Schema to access Prometheus API on. [env:PROMSTACK_PROMETHEUS_SCHEMA]")
 
-	checkEnvironment()
+	PromStackCmd.PersistentFlags().StringVarP(&parsedCfg.Cluster, "cluster", "", defaultCluster, "Environment to use when loading in configuration variables. [env:PROMSTACK_ENVIRONEMNT]")
+	//PromStackCmd.PersistentFlags().StringVar(&clusterFlag, "cluster", "local", "Environment to use when loading in configuration variables. [env:PROMSTACK_ENVIRONEMNT]")
+	PromStackCmd.PersistentFlags().BoolVar(&parsedCfg.Verbose, "verbose", defaultVerbose, "Enable Verbose output of application. [env:PROMSTACK_VERBOSE]")
 }
 
-func checkEnvironment() {
-	//-- Consul ENV Variables for Configuration
-	if consulAddress := os.Getenv("PROMSTACK_CONSUL_ADDRESS"); len(consulAddress) > 0 {
-		commandCfg.Consul.Address = consulAddress
+func initConfig() {
+	// set config file defaults
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath("$HOME/.promstack")
+	viper.AddConfigPath("/etc/promstack")
+	viper.AddConfigPath(".")
+	viper.SetConfigName("config")
+
+	// set env defaults
+	viper.SetEnvPrefix("PROMSTACK")
+
+	// setting priority variables - Verbose
+	viper.BindEnv("VERBOSE")
+	if viper.GetBool("VERBOSE") {
+		commandCfg.Verbose = true
 	}
-	if consulDatacenter := os.Getenv("PROMSTACK_CONSUL_DATACENTER"); len(consulDatacenter) > 0 {
-		commandCfg.Consul.Datacenter = consulDatacenter
+	if parsedCfg.Verbose != defaultVerbose {
+		commandCfg.Verbose = parsedCfg.Verbose
 	}
-	if consulPort := os.Getenv("PROMSTACK_CONSUL_PORT"); len(consulPort) > 0 {
-		commandCfg.Consul.Port = consulPort
+	// setting priority variables - Cluster
+	viper.BindEnv("CLUSTER")
+	if viper.GetString("CLUSTER") != "" {
+		commandCfg.Cluster = viper.GetString("CLUSTER")
 	}
-	if consulSchema := os.Getenv("PROMSTACK_CONSUL_SCHEMA"); len(consulSchema) > 0 {
-		commandCfg.Consul.Schema = consulSchema
-	}
-	//-- Prometheus ENV Variables for Configuration
-	if prometheusAddress := os.Getenv("PROMSTACK_PROMETHEUS_ADDRESS"); len(prometheusAddress) > 0 {
-		commandCfg.Prometheus.Address = prometheusAddress
-	}
-	if prometheusSchema := os.Getenv("PROMSTACK_PROMETHEUS_SCHEMA"); len(prometheusSchema) > 0 {
-		commandCfg.Prometheus.Schema = prometheusSchema
-	}
-	if prometheusPort := os.Getenv("PROMSTACK_PROMETHEUS_PORT"); len(prometheusPort) > 0 {
-		commandCfg.Prometheus.Port = prometheusPort
+	if parsedCfg.Cluster != "" {
+		commandCfg.Cluster = parsedCfg.Cluster
 	}
 
-	if verbose := os.Getenv("PROMSTACK_VERBOSE"); len(verbose) > 0 {
-		var err error
-		if commandCfg.Verbose, err = strconv.ParseBool(verbose); err != nil {
-			commandCfg.Verbose = false
+	err := viper.ReadInConfig()
+	if err != nil {
+		if commandCfg.Verbose {
+			log.Printf("[DEBUG] No Configuration File Found (%s). Loading defaults.", err)
 		}
+	} else {
+		// set prefix. If no prefix is provided, look for top-level configurations
+		var prefix string
+		if commandCfg.Cluster != "" {
+			prefix = commandCfg.Cluster + "."
+		}
+
+		// set Consul from Config File
+		if viper.GetString(prefix+"consul.address") != "" {
+			commandCfg.Consul.Address = viper.GetString(prefix + "consul.address")
+		}
+		if viper.GetString(prefix+"consul.datacenter") != "" {
+			commandCfg.Consul.Datacenter = viper.GetString(prefix + "consul.datacenter")
+		}
+		if viper.GetString(prefix+"prometheus.address") != "" {
+			commandCfg.Prometheus.Address = viper.GetString(prefix + "prometheus.address")
+		}
+	}
+
+	// ENV mappings (take priority over FILE)
+	//-- CONSUL MAPS
+	viper.BindEnv("CONSUL_ADDRESS")
+	if viper.GetString("CONSUL_ADDRESS") != "" {
+		commandCfg.Consul.Address = viper.GetString("CONSUL_ADDRESS")
+	}
+	viper.BindEnv("CONSUL_DATACENTER")
+	if viper.GetString("CONSUL_DATACENTER") != "" {
+		commandCfg.Consul.Datacenter = viper.GetString("CONSUL_DATACENTER")
+	}
+	viper.BindEnv("CONSUL_PORT")
+	if viper.GetString("CONSUL_PORT") != "" {
+		commandCfg.Consul.Port = viper.GetString("CONSUL_PORT")
+	}
+	//-- PROMETHEUS MAPS
+	viper.BindEnv("PROMETHEUS_ADDRESS")
+	if viper.GetString("PROMETHEUS_ADDRESS") != "" {
+		commandCfg.Prometheus.Address = viper.GetString("PROMETHEUS_ADDRESS")
+	}
+	viper.BindEnv("PROMETHEUS_SCHEMA")
+	if viper.GetString("PROMETHEUS_SCHEMA") != "" {
+		commandCfg.Prometheus.Schema = viper.GetString("PROMETHEUS_SCHEMA")
+	}
+	viper.BindEnv("PROMETHEUS_PORT")
+	if viper.GetString("PROMETHEUS_PORT") != "" {
+		commandCfg.Prometheus.Port = viper.GetString("PROMETHEUS_PORT")
+	}
+	//-- GENERAL MAPS
+
+	// Script ARG mappings (take priority of ENV/FILE)
+	//-- CONSUL MAPS
+	if parsedCfg.Consul.Address != defaultConsulAddress {
+		commandCfg.Consul.Address = parsedCfg.Consul.Address
 	}
 }

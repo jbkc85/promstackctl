@@ -19,3 +19,13 @@ curl -XPUT consul.endpoint:8500/v1/kv/promstack/exporters/node-exporter -d '{"po
 ```
 
 ### Adding a Machine to Monitor
+
+```sh
+$ promstackctl monitor server --node.name example.com --node.address 1.1.1.1 --exporter.name cadvisor
+```
+
+## TODO
+
+[ ] - implement health for entire PromStack (missing Grafana and AlertManager) using parallel requests
+[ ] - add external JSON file for exporter list based on Prometheus's Wiki page
+[ ] - migrate 'node' variables to 'machine' where applicable (node is Consul terminology)

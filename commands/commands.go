@@ -26,17 +26,19 @@ var removeRootCmd = &cobra.Command{
 }
 
 func init() {
-	monitorRootCmd.AddCommand(serversMonitorCmd)
-	removeRootCmd.AddCommand(serversUnmonitorCmd)
+	globalCmdFlags()
+
 	PromStackCmd.AddCommand(healthRootCmd)
 	PromStackCmd.AddCommand(getRootCmd)
 	PromStackCmd.AddCommand(describeRootCmd)
+
+	// need to find a place to put these..
 	PromStackCmd.AddCommand(monitorRootCmd)
 	PromStackCmd.AddCommand(removeRootCmd)
+	monitorRootCmd.AddCommand(serversMonitorCmd)
+	removeRootCmd.AddCommand(serversUnmonitorCmd)
 
-	initConfig()
-
-	// initialize Consul
-	initializeConsul()
-	initializePrometheus()
+	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(initializeConsul)
+	cobra.OnInitialize(initializePrometheus)
 }

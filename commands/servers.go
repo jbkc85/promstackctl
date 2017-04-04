@@ -121,8 +121,8 @@ func monitorServer(cmd *cobra.Command, args []string) {
 
 	exporterDetails := getKV("promstack/exporters/" + exporterNameFlag)
 
-	if exporterDetails.Value == nil {
-		log.Fatalf("[ERROR] Unable to retrieve Exporter from Consul Inventory.  Please try again.")
+	if exporterDetails == nil {
+		log.Fatalf("[ERROR] Exporter %s does not appear to be in the Consul KeyVal store.  Please add it, or to see an available list of exporters run:\n\t$ promstackctl get exporters", exporterNameFlag)
 	} else {
 		kvExporter := exporter{}
 		if err := json.Unmarshal(exporterDetails.Value, &kvExporter); err != nil {

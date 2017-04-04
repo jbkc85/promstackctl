@@ -14,9 +14,6 @@ var healthRootCmd = &cobra.Command{
 	Run:   healthCheck,
 }
 
-func init() {
-}
-
 func healthCheck(cmd *cobra.Command, args []string) {
 	table := uitable.New()
 	table.Wrap = true
