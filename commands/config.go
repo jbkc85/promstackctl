@@ -68,7 +68,6 @@ func globalCmdFlags() {
 	PromStackCmd.PersistentFlags().StringVar(&parsedCfg.Prometheus.Schema, "promtheus.schema", "http", "Schema to access Prometheus API on. [env:PROMSTACK_PROMETHEUS_SCHEMA]")
 
 	PromStackCmd.PersistentFlags().StringVarP(&parsedCfg.Cluster, "cluster", "", defaultCluster, "Environment to use when loading in configuration variables. [env:PROMSTACK_ENVIRONEMNT]")
-	//PromStackCmd.PersistentFlags().StringVar(&clusterFlag, "cluster", "local", "Environment to use when loading in configuration variables. [env:PROMSTACK_ENVIRONEMNT]")
 	PromStackCmd.PersistentFlags().BoolVar(&parsedCfg.Verbose, "verbose", defaultVerbose, "Enable Verbose output of application. [env:PROMSTACK_VERBOSE]")
 }
 
